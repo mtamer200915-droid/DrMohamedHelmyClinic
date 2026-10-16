@@ -1,0 +1,290 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>عيادة الدكتور محمد حلمي</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="app.js" defer></script>
+</head>
+<body>
+
+    <div class="layout">
+
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo">✚</div>
+                <div>
+                    <h2 data-ar="عيادة د. محمد حلمي"
+                        data-en="Dr. Mohamed Helmy">عيادة د. محمد حلمي</h2>
+                    <p>Clinic Management</p>
+                </div>
+            </div>
+
+            <nav>
+                <button class="nav-btn active" data-page="dashboard">
+                    <span>▦</span>
+                    <span data-ar="لوحة التحكم" data-en="Dashboard">لوحة التحكم</span>
+                </button>
+
+                <button class="nav-btn" data-page="patients">
+                    <span>♙</span>
+                    <span data-ar="المرضى" data-en="Patients">المرضى</span>
+                </button>
+
+                <button class="nav-btn" data-page="queue">
+                    <span>☷</span>
+                    <span data-ar="دور اليوم" data-en="Today's Queue">دور اليوم</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <span class="online-dot"></span>
+                <span data-ar="نظام إدارة العيادة"
+                      data-en="Clinic Management System">نظام إدارة العيادة</span>
+            </div>
+        </aside>
+
+        <main class="main">
+
+            <header class="topbar">
+                <div>
+                    <p class="subtitle"
+                       data-ar="مرحباً بك"
+                       data-en="Welcome back">مرحباً بك</p>
+                    <h1 id="page-title"
+                        data-ar="لوحة التحكم"
+                        data-en="Dashboard">لوحة التحكم</h1>
+                </div>
+
+                <button id="language-btn" class="language-btn">
+                    English
+                </button>
+            </header>
+
+            <section class="hero">
+                <div>
+                    <span class="hero-label"
+                          data-ar="إدارة العيادة"
+                          data-en="CLINIC MANAGEMENT">إدارة العيادة</span>
+
+                    <h2 data-ar="كل تفاصيل العيادة في مكان واحد"
+                        data-en="Your Clinic, All in One Place">
+                        كل تفاصيل العيادة في مكان واحد
+                    </h2>
+
+                    <p data-ar="إدارة المرضى وتنظيم الدور ومتابعة الزيارات بسهولة."
+                       data-en="Manage patients, organize the queue, and track visits.">
+                        إدارة المرضى وتنظيم الدور ومتابعة الزيارات بسهولة.
+                    </p>
+                </div>
+
+                <div class="hero-icon">✚</div>
+            </section>
+
+            <section id="dashboard-page" class="page">
+
+                <div class="stats">
+
+                    <article class="stat-card">
+                        <p data-ar="إجمالي المرضى"
+                           data-en="Total Patients">إجمالي المرضى</p>
+                        <h2 id="total-patients">0</h2>
+                    </article>
+
+                    <article class="stat-card">
+                        <p data-ar="حالات اليوم"
+                           data-en="Today's Cases">حالات اليوم</p>
+                        <h2 id="today-cases">0</h2>
+                    </article>
+
+                    <article class="stat-card">
+                        <p data-ar="في انتظار الدور"
+                           data-en="Waiting">في انتظار الدور</p>
+                        <h2 id="waiting-patients">0</h2>
+                    </article>
+
+                    <article class="stat-card">
+                        <p data-ar="تنبيهات الاستشارة"
+                           data-en="Consultation Alerts">تنبيهات الاستشارة</p>
+                        <h2 id="consultation-alerts">0</h2>
+                    </article>
+
+                </div>
+
+                <div class="section-heading">
+                    <div>
+                        <h2 data-ar="الإجراءات السريعة"
+                            data-en="Quick Actions">الإجراءات السريعة</h2>
+                        <p data-ar="اختار المهمة اللي عايز تعملها"
+                           data-en="Choose what you want to do">
+                            اختار المهمة اللي عايز تعملها
+                        </p>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <button class="action-card" data-go="patients">
+                        <span class="action-icon">＋</span>
+                        <strong data-ar="إضافة مريض"
+                                data-en="Add Patient">إضافة مريض</strong>
+                        <small data-ar="تسجيل بيانات مريض جديد"
+                               data-en="Register a new patient">
+                            تسجيل بيانات مريض جديد
+                        </small>
+                    </button>
+
+                    <button class="action-card" data-go="queue">
+                        <span class="action-icon">☷</span>
+                        <strong data-ar="إدارة الدور"
+                                data-en="Manage Queue">إدارة الدور</strong>
+                        <small data-ar="متابعة المرضى المنتظرين"
+                               data-en="View waiting patients">
+                            متابعة المرضى المنتظرين
+                        </small>
+                    </button>
+                </div>
+
+            </section>
+
+            <section id="patients-page" class="page hidden">
+
+                <div class="section-heading">
+                    <div>
+                        <h2 data-ar="ملفات المرضى"
+                            data-en="Patient Records">ملفات المرضى</h2>
+                        <p data-ar="أضف مريضاً أو ابحث عن ملف موجود."
+                           data-en="Add a patient or search existing records.">
+                            أضف مريضاً أو ابحث عن ملف موجود.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="content-grid">
+
+                    <form id="patient-form" class="panel">
+
+                        <h3 data-ar="إضافة مريض جديد"
+                            data-en="Add New Patient">إضافة مريض جديد</h3>
+
+                        <label for="patient-name"
+                               data-ar="اسم المريض"
+                               data-en="Patient Name">اسم المريض</label>
+                        <input id="patient-name" type="text"
+                               maxlength="120" required>
+
+                        <label for="patient-phone"
+                               data-ar="رقم الهاتف"
+                               data-en="Phone Number">رقم الهاتف</label>
+                        <input id="patient-phone" type="tel"
+                               maxlength="30" required>
+
+                        <label for="patient-reason"
+                               data-ar="المرض أو سبب الزيارة"
+                               data-en="Condition / Visit Reason">
+                            المرض أو سبب الزيارة
+                        </label>
+                        <textarea id="patient-reason" rows="3"></textarea>
+
+                        <label for="visit-type"
+                               data-ar="نوع الزيارة"
+                               data-en="Visit Type">نوع الزيارة</label>
+                        <select id="visit-type">
+                            <option value="exam"
+                                    data-ar="كشف جديد"
+                                    data-en="New Examination">كشف جديد</option>
+                            <option value="consultation"
+                                    data-ar="استشارة"
+                                    data-en="Consultation">استشارة</option>
+                        </select>
+
+                        <label for="visit-date"
+                               data-ar="تاريخ الزيارة"
+                               data-en="Visit Date">تاريخ الزيارة</label>
+                        <input id="visit-date" type="date" required>
+
+                        <button type="submit" class="primary-btn"
+                                data-ar="حفظ وإضافة للدور"
+                                data-en="Save and Add to Queue">
+                            حفظ وإضافة للدور
+                        </button>
+
+                        <p id="form-message" role="status"></p>
+
+                    </form>
+
+                    <div class="panel">
+                        <h3 data-ar="قائمة المرضى"
+                            data-en="Patient List">قائمة المرضى</h3>
+
+                        <input id="search-input" type="search"
+                               data-ar-placeholder="ابحث بالاسم أو الهاتف"
+                               data-en-placeholder="Search by name or phone"
+                               placeholder="ابحث بالاسم أو الهاتف">
+
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th data-ar="الاسم" data-en="Name">الاسم</th>
+                                        <th data-ar="الهاتف" data-en="Phone">الهاتف</th>
+                                        <th data-ar="الزيارة" data-en="Visit">الزيارة</th>
+                                        <th data-ar="التاريخ" data-en="Date">التاريخ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="patients-table"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <section id="queue-page" class="page hidden">
+
+                <div class="section-heading">
+                    <div>
+                        <h2 data-ar="دور اليوم"
+                            data-en="Today's Queue">دور اليوم</h2>
+                        <p data-ar="تابع حالة كل مريض."
+                           data-en="Track each patient's status.">
+                            تابع حالة كل مريض.
+                        </p>
+                    </div>
+
+                    <button id="refresh-btn" class="secondary-btn"
+                            data-ar="تحديث"
+                            data-en="Refresh">تحديث</button>
+                </div>
+
+                <div class="panel table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th data-ar="رقم الدور" data-en="Queue No.">رقم الدور</th>
+                                <th data-ar="اسم المريض" data-en="Patient">اسم المريض</th>
+                                <th data-ar="نوع الزيارة" data-en="Visit Type">نوع الزيارة</th>
+                                <th data-ar="الحالة" data-en="Status">الحالة</th>
+                                <th data-ar="الإجراء" data-en="Action">الإجراء</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queue-table"></tbody>
+                    </table>
+                </div>
+
+            </section>
+
+            <footer>
+                <span>Dr. Mohamed Helmy Clinic</span>
+                <span data-ar="بيانات المرضى سرية"
+                      data-en="Patient records are confidential">
+                    بيانات المرضى سرية
+                </span>
+            </footer>
+
+        </main>
+    </div>
+
+</body>
+</html>
