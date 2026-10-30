@@ -35,7 +35,7 @@
 
                 <button class="nav-btn" data-page="queue">
                     <span>☷</span>
-                    <span data-ar="دور اليوم" data-en="Today's Queue">دور اليوم</span>
+                    <span data-ar="المواعيد والدور" data-en="Appointments & Queue">المواعيد والدور</span>
                 </button>
             </nav>
 
@@ -204,6 +204,8 @@
                                data-en="Visit Date">تاريخ الزيارة</label>
                         <input id="visit-date" type="date" required>
 
+                        <p id="exam-check-message" role="status" aria-live="polite"></p>
+
                         <button type="submit" class="primary-btn"
                                 data-ar="حفظ وإضافة للدور"
                                 data-en="Save and Add to Queue">
@@ -217,6 +219,22 @@
                     <div class="panel">
                         <h3 data-ar="قائمة المرضى"
                             data-en="Patient List">قائمة المرضى</h3>
+
+                        <div class="backup-actions">
+                            <button id="export-data-btn" type="button" class="secondary-btn"
+                                    data-ar="تنزيل نسخة احتياطية"
+                                    data-en="Download Backup">تنزيل نسخة احتياطية</button>
+                            <button id="import-data-btn" type="button" class="secondary-btn"
+                                    data-ar="استعادة نسخة احتياطية"
+                                    data-en="Restore Backup">استعادة نسخة احتياطية</button>
+                            <input id="import-data-file" type="file" accept=".json,application/json" hidden>
+                        </div>
+                        <p class="storage-note"
+                           data-ar="الحفظ تلقائي على هذا الجهاز فقط. نزّل نسخة احتياطية بانتظام؛ ملف النسخة يحتوي على بيانات المرضى."
+                           data-en="Data is saved automatically on this device only. Download backups regularly; the backup file contains patient information.">
+                            الحفظ تلقائي على هذا الجهاز فقط. نزّل نسخة احتياطية بانتظام؛ ملف النسخة يحتوي على بيانات المرضى.
+                        </p>
+                        <p id="backup-message" role="status" aria-live="polite"></p>
 
                         <input id="search-input" type="search"
                                data-ar-placeholder="ابحث بالاسم أو الهاتف"
@@ -243,19 +261,25 @@
 
             <section id="queue-page" class="page hidden">
 
-                <div class="section-heading">
+                <div class="section-heading queue-heading">
                     <div>
-                        <h2 data-ar="دور اليوم"
-                            data-en="Today's Queue">دور اليوم</h2>
-                        <p data-ar="تابع حالة كل مريض."
-                           data-en="Track each patient's status.">
-                            تابع حالة كل مريض.
+                        <h2 data-ar="المواعيد والدور"
+                            data-en="Appointments & Queue">المواعيد والدور</h2>
+                        <p data-ar="اختار التاريخ لمتابعة المواعيد وتعديلها أو إلغائها."
+                           data-en="Choose a date to view, edit, or cancel visits.">
+                            اختار التاريخ لمتابعة المواعيد وتعديلها أو إلغائها.
                         </p>
                     </div>
 
-                    <button id="refresh-btn" class="secondary-btn"
-                            data-ar="تحديث"
-                            data-en="Refresh">تحديث</button>
+                    <div class="queue-controls">
+                        <label for="queue-date-filter"
+                               data-ar="تاريخ المواعيد"
+                               data-en="Appointment Date">تاريخ المواعيد</label>
+                        <input id="queue-date-filter" type="date">
+                        <button id="refresh-btn" class="secondary-btn"
+                                data-ar="تحديث"
+                                data-en="Refresh">تحديث</button>
+                    </div>
                 </div>
 
                 <div class="panel table-container">
@@ -275,8 +299,45 @@
 
             </section>
 
+            <dialog id="edit-visit-dialog" class="edit-dialog" aria-labelledby="edit-visit-title">
+                <form id="edit-visit-form">
+                    <h2 id="edit-visit-title"
+                        data-ar="تعديل الموعد"
+                        data-en="Edit Visit">تعديل الموعد</h2>
+
+                    <label for="edit-visit-type"
+                           data-ar="نوع الزيارة"
+                           data-en="Visit Type">نوع الزيارة</label>
+                    <select id="edit-visit-type" required>
+                        <option value="exam" data-ar="كشف جديد" data-en="Examination">كشف جديد</option>
+                        <option value="consultation" data-ar="استشارة" data-en="Consultation">استشارة</option>
+                    </select>
+
+                    <label for="edit-visit-date"
+                           data-ar="تاريخ الزيارة"
+                           data-en="Visit Date">تاريخ الزيارة</label>
+                    <input id="edit-visit-date" type="date" required>
+
+                    <label for="edit-visit-reason"
+                           data-ar="سبب الزيارة"
+                           data-en="Visit Reason">سبب الزيارة</label>
+                    <textarea id="edit-visit-reason" rows="3"></textarea>
+
+                    <p id="edit-visit-message" role="alert"></p>
+                    <div class="dialog-actions">
+                        <button id="close-edit-btn" type="button" class="secondary-btn"
+                                data-ar="رجوع"
+                                data-en="Back">رجوع</button>
+                        <button type="submit" class="primary-btn"
+                                data-ar="حفظ التعديل"
+                                data-en="Save Changes">حفظ التعديل</button>
+                    </div>
+                </form>
+            </dialog>
+
             <footer>
                 <span>Dr. Mohamed Helmy Clinic</span>
+                <span id="storage-status" role="status" aria-live="polite"></span>
                 <span data-ar="بيانات المرضى سرية"
                       data-en="Patient records are confidential">
                     بيانات المرضى سرية

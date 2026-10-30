@@ -1,0 +1,2 @@
+# Patient data exports must stay out of source control.
+clinic-data-*.json

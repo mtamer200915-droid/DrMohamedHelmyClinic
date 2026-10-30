@@ -3,9 +3,15 @@ const $ = (selector) => document.querySelector(selector);
 let currentLanguage = "ar";
 let currentPage = "dashboard";
 
+const STORAGE_KEY = "dr-mohamed-helmy-clinic:data:v1";
+
 let patients = [];
 let queue = [];
 let nextQueueNumber = 1;
+let storageStatus = "ready";
+let backupStatus = "";
+let lastRecordId = 0;
+let editingVisitId = null;
 
 
 // ========================================
@@ -20,6 +26,427 @@ function getTodayDate() {
     String(today.getMonth() + 1).padStart(2, "0"),
     String(today.getDate()).padStart(2, "0")
   ].join("-");
+}
+
+
+function normalizePhone(phone) {
+  const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
+
+  return String(phone ?? "")
+    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
+    .replace(/\D/g, "");
+}
+
+
+function normalizeName(name) {
+  return String(name ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+
+function createRecordId() {
+  let id = Math.max(Date.now(), lastRecordId + 1);
+
+  while (
+    patients.some((patient) => patient.id === id) ||
+    queue.some((visit) => visit.id === id)
+  ) {
+    id += 1;
+  }
+
+  lastRecordId = id;
+  return id;
+}
+
+
+function findPatientByPhone(phone) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return null;
+
+  return patients.find(
+    (patient) => normalizePhone(patient.phone) === normalizedPhone
+  ) || null;
+}
+
+
+function getPreviousCompletedExam(patientId, consultationDate) {
+  return queue
+    .filter((visit) => (
+      visit.patientId === patientId &&
+      visit.type === "exam" &&
+      visit.status === "done" &&
+      visit.date <= consultationDate
+    ))
+    .sort((first, second) => second.date.localeCompare(first.date))[0] || null;
+}
+
+
+function checkExamEligibility() {
+  const phone = $("#patient-phone")?.value.trim();
+  const message = $("#exam-check-message");
+  if (!message) return;
+
+  if (!phone) {
+    setExamCheckMessage(currentLanguage === "ar"
+      ? "اكتب رقم التلفون الأول."
+      : "Enter a phone number first.", "info");
+    return;
+  }
+
+  const patient = findPatientByPhone(phone);
+  if (!patient) {
+    setExamCheckMessage(currentLanguage === "ar"
+      ? "مفيش ملف مسجل بالرقم ده. سجّل كشف جديد الأول."
+      : "No patient record found for this number. Register an examination first.", "error");
+    return;
+  }
+
+  const consultationDate = $("#visit-date")?.value || getTodayDate();
+  const previousExam = getPreviousCompletedExam(patient.id, consultationDate);
+
+  setExamCheckMessage(previousExam
+    ? (currentLanguage === "ar"
+        ? `المريض مسجل، وآخر كشف مكتمل بتاريخ ${previousExam.date}. يمكن تسجيل استشارة.`
+        : `Patient found. Last completed examination: ${previousExam.date}. Consultation is allowed.`)
+    : (currentLanguage === "ar"
+        ? "المريض مسجل، لكن مفيش كشف مكتمل قبل تاريخ الاستشارة المختار."
+        : "Patient found, but there is no completed examination before the selected consultation date."),
+    previousExam ? "success" : "error");
+}
+
+
+function setExamCheckMessage(text, state = "info") {
+  const message = $("#exam-check-message");
+  if (!message) return;
+
+  message.textContent = text;
+  message.dataset.state = state;
+}
+
+
+function setBackupMessage(key) {
+  backupStatus = key;
+
+  const messages = {
+    downloaded: {
+      ar: "تم تنزيل النسخة الاحتياطية. احتفظ بها في مكان آمن.",
+      en: "Backup downloaded. Keep it somewhere safe."
+    },
+    invalid: {
+      ar: "الملف غير صالح أو لا يحتوي على نسخة احتياطية للعيادة.",
+      en: "This file is not a valid clinic backup."
+    },
+    saveError: {
+      ar: "تعذر حفظ النسخة على هذا الجهاز.",
+      en: "Could not save the backup on this device."
+    },
+    restored: {
+      ar: "تمت استعادة البيانات بنجاح.",
+      en: "Data restored successfully."
+    }
+  };
+
+  const message = $("#backup-message");
+  if (message) {
+    message.textContent = messages[key]?.[currentLanguage] || "";
+  }
+}
+
+
+function isValidClinicData(data) {
+  if (
+    !data ||
+    data.version !== 1 ||
+    typeof data.nextQueueNumber !== "number" ||
+    !Number.isFinite(data.nextQueueNumber) ||
+    !Array.isArray(data.patients) ||
+    !Array.isArray(data.queue)
+  ) {
+    return false;
+  }
+
+  const patientIds = new Set();
+  const validPatients = data.patients.every((patient) => {
+    if (
+      !patient ||
+      typeof patient.id !== "number" ||
+      !Number.isFinite(patient.id) ||
+      typeof patient.name !== "string" ||
+      typeof patient.phone !== "string"
+    ) {
+      return false;
+    }
+
+    if (patientIds.has(Number(patient.id))) return false;
+    patientIds.add(Number(patient.id));
+    return true;
+  });
+
+  if (!validPatients) return false;
+
+  return data.queue.every((visit) => (
+    visit &&
+    typeof visit.id === "number" &&
+    Number.isFinite(visit.id) &&
+    typeof visit.queueNumber === "number" &&
+    Number.isFinite(visit.queueNumber) &&
+    typeof visit.patientId === "number" &&
+    patientIds.has(visit.patientId) &&
+    (visit.type === "exam" || visit.type === "consultation") &&
+    ["waiting", "in_doctor", "done"].includes(visit.status) &&
+    typeof visit.date === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(visit.date)
+  ));
+}
+
+
+function updateStorageStatus() {
+  const status = $("#storage-status");
+  if (!status) return;
+
+  const messages = {
+    ready: {
+      ar: "الحفظ التلقائي مفعّل على هذا الجهاز.",
+      en: "Automatic saving is enabled on this device."
+    },
+    loaded: {
+      ar: "تم استرجاع البيانات المحفوظة على هذا الجهاز.",
+      en: "Saved data was loaded from this device."
+    },
+    saved: {
+      ar: "تم حفظ التغييرات على هذا الجهاز.",
+      en: "Changes were saved on this device."
+    },
+    error: {
+      ar: "تعذر حفظ البيانات. نزّل نسخة احتياطية الآن.",
+      en: "Data could not be saved. Download a backup now."
+    }
+  };
+
+  status.textContent = messages[storageStatus][currentLanguage];
+}
+
+
+function loadClinicData() {
+  try {
+    const savedData = localStorage.getItem(STORAGE_KEY);
+    if (!savedData) {
+      updateStorageStatus();
+      return;
+    }
+
+    const data = JSON.parse(savedData);
+    if (!isValidClinicData(data)) {
+      storageStatus = "error";
+      updateStorageStatus();
+      return;
+    }
+
+    patients = data.patients;
+    queue = data.queue;
+
+    const highestQueueNumber = queue.reduce(
+      (highest, visit) => Math.max(highest, Number(visit.queueNumber) || 0),
+      0
+    );
+
+    nextQueueNumber = Math.max(
+      Number(data.nextQueueNumber) || 1,
+      highestQueueNumber + 1
+    );
+
+    storageStatus = "loaded";
+  } catch (error) {
+    storageStatus = "error";
+  }
+
+  updateStorageStatus();
+}
+
+
+function saveClinicData() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        patients,
+        queue,
+        nextQueueNumber,
+        savedAt: new Date().toISOString()
+      })
+    );
+
+    storageStatus = "saved";
+    updateStorageStatus();
+    return true;
+  } catch (error) {
+    storageStatus = "error";
+    updateStorageStatus();
+    return false;
+  }
+}
+
+
+function exportClinicData() {
+  const data = {
+    version: 1,
+    patients,
+    queue,
+    nextQueueNumber,
+    savedAt: new Date().toISOString()
+  };
+  const file = new Blob(
+    [JSON.stringify(data, null, 2)],
+    { type: "application/json" }
+  );
+  const fileUrl = URL.createObjectURL(file);
+  const link = document.createElement("a");
+
+  link.href = fileUrl;
+  link.download = `clinic-data-${getTodayDate()}.json`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+
+  setBackupMessage("downloaded");
+}
+
+
+async function importClinicData(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const data = JSON.parse(await file.text());
+    if (!isValidClinicData(data)) {
+      throw new Error("invalid backup");
+    }
+
+    const confirmed = window.confirm(
+      currentLanguage === "ar"
+        ? "استعادة النسخة ستستبدل البيانات الحالية على هذا الجهاز. هل تريد المتابعة؟"
+        : "Restoring this backup will replace the current data on this device. Continue?"
+    );
+
+    if (!confirmed) return;
+
+    patients = data.patients;
+    queue = data.queue;
+    const highestQueueNumber = data.queue.reduce(
+      (highest, visit) => Math.max(highest, Number(visit.queueNumber) || 0),
+      0
+    );
+    nextQueueNumber = Math.max(
+      Number(data.nextQueueNumber) || 1,
+      highestQueueNumber + 1
+    );
+
+    if (!saveClinicData()) {
+      setBackupMessage("saveError");
+      return;
+    }
+
+    renderPatients();
+    renderQueue();
+    updateDashboard();
+
+    setBackupMessage("restored");
+  } catch (error) {
+    setBackupMessage("invalid");
+  } finally {
+    event.target.value = "";
+  }
+}
+
+
+function openVisitEditor(visit) {
+  if (visit.status !== "waiting") return;
+
+  editingVisitId = visit.id;
+  $("#edit-visit-type").value = visit.type;
+  $("#edit-visit-date").value = visit.date;
+  $("#edit-visit-reason").value = visit.reason || "";
+  $("#edit-visit-message").textContent = "";
+  $("#edit-visit-dialog").showModal();
+}
+
+
+function saveEditedVisit(event) {
+  event.preventDefault();
+
+  const visit = queue.find((item) => item.id === editingVisitId);
+  if (!visit || visit.status !== "waiting") return;
+
+  const type = $("#edit-visit-type").value;
+  const date = $("#edit-visit-date").value;
+  const reason = $("#edit-visit-reason").value.trim();
+  const message = $("#edit-visit-message");
+
+  if (!type || !date) return;
+
+  if (
+    type === "consultation" &&
+    !getPreviousCompletedExam(visit.patientId, date)
+  ) {
+    message.textContent = currentLanguage === "ar"
+      ? "لا يمكن تعديل الموعد إلى استشارة من غير كشف سابق مكتمل."
+      : "This visit cannot be changed to a consultation without a completed previous examination.";
+    message.style.color = "#dc2626";
+    return;
+  }
+
+  visit.type = type;
+  visit.date = date;
+  visit.reason = reason;
+  const queueDateFilter = $("#queue-date-filter");
+  if (queueDateFilter) queueDateFilter.value = date;
+
+  const wasSaved = saveClinicData();
+  $("#edit-visit-dialog").close();
+  editingVisitId = null;
+
+  if (!wasSaved) {
+    showMessage(
+      currentLanguage === "ar"
+        ? "تم تعديل الموعد مؤقتاً، لكن تعذر حفظه على هذا الجهاز."
+        : "Visit was edited for this session, but could not be saved on this device.",
+      true
+    );
+  }
+
+  renderPatients();
+  renderQueue();
+  updateDashboard();
+}
+
+
+function cancelVisit(visit) {
+  if (
+    visit.status !== "waiting" ||
+    !window.confirm(
+      currentLanguage === "ar"
+        ? "هل تريد حذف هذا الموعد نهائياً؟ إذا كانت دي الزيارة الوحيدة، سيتم حذف ملف المريض أيضاً."
+        : "Permanently delete this visit? If it is the patient's only visit, their patient file will also be deleted."
+    )
+  ) {
+    return;
+  }
+
+  const patientId = visit.patientId;
+  queue = queue.filter((item) => item.id !== visit.id);
+
+  if (!queue.some((item) => item.patientId === patientId)) {
+    patients = patients.filter((patient) => patient.id !== patientId);
+  }
+
+  saveClinicData();
+  renderPatients();
+  renderQueue();
+  updateDashboard();
 }
 
 
@@ -114,6 +541,11 @@ function changeLanguage() {
 
 
   updatePageTitle();
+  updateStorageStatus();
+  setBackupMessage(backupStatus);
+  if ($("#visit-type")?.value === "consultation") {
+    checkExamEligibility();
+  }
   renderPatients();
   renderQueue();
   updateDashboard();
@@ -144,8 +576,8 @@ function updatePageTitle() {
     },
 
     queue: {
-      ar: "دور اليوم",
-      en: "Today's Queue"
+      ar: "المواعيد والدور",
+      en: "Appointments & Queue"
     }
 
   };
@@ -278,26 +710,53 @@ function addPatient(event) {
   }
 
 
-  // إنشاء المريض
-  const patient = {
+  const existingPatient = findPatientByPhone(phone);
 
-    id: Date.now(),
+  if (
+    existingPatient &&
+    normalizeName(existingPatient.name) !== normalizeName(name)
+  ) {
+    showMessage(
+      currentLanguage === "ar"
+        ? "رقم التلفون مسجل باسم مختلف. راجع الاسم والرقم قبل الحفظ."
+        : "This phone number is registered under a different name. Check the name and number before saving.",
+      true
+    );
 
-    name: name,
+    return;
+  }
 
-    phone: phone,
+  if (visitType === "consultation") {
+    const previousExam = existingPatient
+      ? getPreviousCompletedExam(existingPatient.id, visitDate)
+      : null;
 
-    reason: reason,
+    if (!previousExam) {
+      showMessage(
+        currentLanguage === "ar"
+          ? "لا يمكن تسجيل استشارة قبل وجود كشف سابق مكتمل. سجّل الكشف وأنهِه أولاً."
+          : "A consultation requires a completed previous examination. Register and complete the examination first.",
+        true
+      );
 
+      checkExamEligibility();
+      return;
+    }
+  }
+
+  const patient = existingPatient || {
+    id: createRecordId(),
+    name,
+    phone,
+    reason,
     createdAt: new Date().toISOString()
-
   };
 
 
   // إنشاء الزيارة
   const visit = {
 
-    id: Date.now() + 1,
+    id: createRecordId(),
 
     patientId: patient.id,
 
@@ -314,13 +773,17 @@ function addPatient(event) {
   };
 
 
-  patients.push(patient);
+  if (!existingPatient) patients.push(patient);
 
   queue.push(visit);
+  const queueDateFilter = $("#queue-date-filter");
+  if (queueDateFilter) queueDateFilter.value = visitDate;
+  const wasSaved = saveClinicData();
 
 
   // تفريغ النموذج
   $("#patient-form").reset();
+  setExamCheckMessage("", "info");
 
 
   // إعادة تاريخ اليوم
@@ -332,9 +795,14 @@ function addPatient(event) {
 
 
   showMessage(
-    currentLanguage === "ar"
-      ? "تمت إضافة المريض إلى قائمة الانتظار."
-      : "Patient added to the waiting queue."
+    wasSaved
+      ? (currentLanguage === "ar"
+          ? "تم حفظ الزيارة وإضافتها إلى الدور."
+          : "Visit saved and added to the queue.")
+      : (currentLanguage === "ar"
+          ? "تمت إضافة الزيارة مؤقتاً، لكن تعذر حفظها على الجهاز. نزّل نسخة احتياطية."
+          : "Visit was added for this session, but could not be saved on this device. Download a backup."),
+    !wasSaved
   );
 
 
@@ -473,14 +941,14 @@ function renderQueue() {
   body.replaceChildren();
 
 
-  const today = getTodayDate();
+  const selectedDate = $("#queue-date-filter")?.value || getTodayDate();
 
 
-  // إظهار زيارات اليوم فقط
+  // إظهار زيارات التاريخ المختار
   const todayQueue =
     queue.filter(
       (visit) =>
-        visit.date === today
+        visit.date === selectedDate
     );
 
 
@@ -527,81 +995,53 @@ function renderQueue() {
     );
 
 
-    // زر الإجراء
-    const actionCell =
-      document.createElement("td");
+    const actionCell = document.createElement("td");
+    const actions = document.createElement("div");
+    actions.className = "queue-actions";
 
-
-    const nextButton =
-      document.createElement("button");
-
-
+    const nextButton = document.createElement("button");
     nextButton.type = "button";
-
     nextButton.className = "secondary-btn";
 
-
     if (visit.status === "waiting") {
+      nextButton.textContent = currentLanguage === "ar" ? "بدء الزيارة" : "Start Visit";
+      nextButton.addEventListener("click", () => {
+        visit.status = "in_doctor";
+        saveClinicData();
+        renderQueue();
+        updateDashboard();
+      });
 
-      nextButton.textContent =
-        currentLanguage === "ar"
-          ? "بدء الكشف"
-          : "Start Visit";
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "small-btn";
+      editButton.textContent = currentLanguage === "ar" ? "تعديل" : "Edit";
+      editButton.addEventListener("click", () => openVisitEditor(visit));
 
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "small-btn cancel-btn";
+      cancelButton.textContent = currentLanguage === "ar" ? "إلغاء" : "Cancel";
+      cancelButton.addEventListener("click", () => cancelVisit(visit));
 
-      nextButton.addEventListener(
-        "click",
-        () => {
-
-          visit.status = "in_doctor";
-
-          renderQueue();
-
-          updateDashboard();
-
-        }
-      );
-
-    }
-
-    else if (
-      visit.status === "in_doctor"
-    ) {
-
-      nextButton.textContent =
-        currentLanguage === "ar"
-          ? "إنهاء"
-          : "Complete";
-
-
-      nextButton.addEventListener(
-        "click",
-        () => {
-
-          visit.status = "done";
-
-          renderQueue();
-
-          updateDashboard();
-
-        }
-      );
-
-    }
-
-    else {
-
-      nextButton.textContent =
-        currentLanguage === "ar"
-          ? "مكتمل"
-          : "Completed";
-
+      actions.append(nextButton, editButton, cancelButton);
+    } else if (visit.status === "in_doctor") {
+      nextButton.textContent = currentLanguage === "ar" ? "إنهاء" : "Complete";
+      nextButton.addEventListener("click", () => {
+        visit.status = "done";
+        visit.completedAt = new Date().toISOString();
+        saveClinicData();
+        renderQueue();
+        updateDashboard();
+      });
+      actions.appendChild(nextButton);
+    } else {
+      nextButton.textContent = currentLanguage === "ar" ? "مكتمل" : "Completed";
       nextButton.disabled = true;
-
+      actions.appendChild(nextButton);
     }
 
-
-    actionCell.appendChild(nextButton);
+    actionCell.appendChild(actions);
 
     row.appendChild(actionCell);
 
@@ -610,7 +1050,7 @@ function renderQueue() {
   });
 
 
-  // لو مفيش مرضى النهارده
+  // لو مفيش زيارات في التاريخ المختار
   if (todayQueue.length === 0) {
 
     const row =
@@ -624,8 +1064,8 @@ function renderQueue() {
 
     cell.textContent =
       currentLanguage === "ar"
-        ? "لا يوجد مرضى في دور اليوم."
-        : "No patients in today's queue.";
+        ? "لا توجد زيارات في التاريخ المختار."
+        : "No visits on the selected date.";
 
 
     row.appendChild(cell);
@@ -748,6 +1188,8 @@ document.addEventListener(
   "DOMContentLoaded",
   () => {
 
+    loadClinicData();
+
     // زر اللغة
     $("#language-btn")
       ?.addEventListener(
@@ -762,6 +1204,41 @@ document.addEventListener(
         "submit",
         addPatient
       );
+
+
+    $("#patient-phone")
+      ?.addEventListener("input", () => {
+        if ($("#visit-type")?.value === "consultation") checkExamEligibility();
+      });
+
+    $("#visit-date")
+      ?.addEventListener("change", () => {
+        if ($("#visit-type")?.value === "consultation") checkExamEligibility();
+      });
+
+    $("#visit-type")
+      ?.addEventListener("change", () => {
+        if ($("#visit-type")?.value === "consultation") checkExamEligibility();
+        else setExamCheckMessage("", "info");
+      });
+
+    $("#export-data-btn")
+      ?.addEventListener("click", exportClinicData);
+
+    $("#import-data-btn")
+      ?.addEventListener("click", () => $("#import-data-file")?.click());
+
+    $("#import-data-file")
+      ?.addEventListener("change", importClinicData);
+
+    $("#edit-visit-form")
+      ?.addEventListener("submit", saveEditedVisit);
+
+    $("#close-edit-btn")
+      ?.addEventListener("click", () => {
+        $("#edit-visit-dialog").close();
+        editingVisitId = null;
+      });
 
 
     // البحث
@@ -826,7 +1303,7 @@ document.addEventListener(
       });
 
 
-    // تاريخ اليوم افتراضيًا
+    // تاريخ اليوم افتراضيًا في نموذج الزيارة والتقويم
     const dateInput =
       $("#visit-date");
 
@@ -840,6 +1317,13 @@ document.addEventListener(
         getTodayDate();
 
     }
+
+    const queueDateFilter = $("#queue-date-filter");
+    if (queueDateFilter && !queueDateFilter.value) {
+      queueDateFilter.value = getTodayDate();
+    }
+
+    queueDateFilter?.addEventListener("change", renderQueue);
 
 
     updatePageTitle();
