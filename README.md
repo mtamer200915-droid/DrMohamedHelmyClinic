@@ -16,7 +16,7 @@ The optional Supabase setup adds sign-in and shared clinic data for authorized s
 
 ## Consultation rule
 
-When **Consultation** is selected, the app automatically checks the patient by phone number. A consultation can be saved only when that patient has a completed examination on or before the consultation date. Complete the examination from the queue first.
+When **Consultation** is selected, the app automatically checks the patient by phone number. A consultation requires a completed examination no more than one calendar month before the chosen date, and each patient can have at most two consultations per calendar month. Complete a new examination first if the previous one is too old.
 
 The secretary can choose a date to view appointments, then edit or permanently delete a waiting visit. If a deleted visit was the patient's only visit, the patient file is deleted too.
 

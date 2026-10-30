@@ -91,6 +91,85 @@ function getPreviousCompletedExam(patientId, consultationDate) {
 }
 
 
+function addOneCalendarMonth(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const nextMonth = new Date(Date.UTC(year, month, 1));
+  const nextYear = nextMonth.getUTCFullYear();
+  const nextMonthNumber = nextMonth.getUTCMonth() + 1;
+  const lastDayOfNextMonth = new Date(
+    Date.UTC(nextYear, nextMonthNumber, 0)
+  ).getUTCDate();
+  const nextDay = Math.min(day, lastDayOfNextMonth);
+
+  return [
+    nextYear,
+    String(nextMonthNumber).padStart(2, "0"),
+    String(nextDay).padStart(2, "0")
+  ].join("-");
+}
+
+
+function getConsultationEligibility(patientId, consultationDate, excludeVisitId = null) {
+  const monthKey = consultationDate.slice(0, 7);
+  const consultationCount = queue.filter((visit) => (
+    visit.patientId === patientId &&
+    visit.type === "consultation" &&
+    visit.date.slice(0, 7) === monthKey &&
+    visit.id !== excludeVisitId
+  )).length;
+
+  if (consultationCount >= 2) {
+    return {
+      allowed: false,
+      reason: "consultationLimit",
+      previousExam: null,
+      consultationCount
+    };
+  }
+
+  const previousExam = getPreviousCompletedExam(patientId, consultationDate);
+
+  if (!previousExam) {
+    return {
+      allowed: false,
+      reason: "examMissing",
+      previousExam: null,
+      consultationCount
+    };
+  }
+
+  if (consultationDate > addOneCalendarMonth(previousExam.date)) {
+    return {
+      allowed: false,
+      reason: "examExpired",
+      previousExam,
+      consultationCount
+    };
+  }
+
+  return { allowed: true, previousExam, consultationCount };
+}
+
+
+function getConsultationEligibilityMessage(eligibility) {
+  if (eligibility.reason === "examExpired") {
+    return currentLanguage === "ar"
+      ? `عدّى شهر على آخر كشف مكتمل بتاريخ ${eligibility.previousExam.date}. لازم تعمل كشف جديد قبل الاستشارة.`
+      : `More than one month has passed since the last completed examination on ${eligibility.previousExam.date}. A new examination is required before a consultation.`;
+  }
+
+  if (eligibility.reason === "consultationLimit") {
+    return currentLanguage === "ar"
+      ? "وصل المريض للحد الأقصى: استشارتين فقط في الشهر الواحد. لا يمكن تسجيل استشارة ثالثة هذا الشهر."
+      : "The patient has reached the limit of two consultations per month. A third consultation cannot be registered this month.";
+  }
+
+  return currentLanguage === "ar"
+    ? "لا يمكن تسجيل استشارة قبل وجود كشف سابق مكتمل. سجّل الكشف وأنهِه أولاً."
+    : "A consultation requires a previous completed examination. Register and complete the examination first.";
+}
+
+
 function checkExamEligibility() {
   const phone = $("#patient-phone")?.value.trim();
   const message = $("#exam-check-message");
@@ -112,16 +191,14 @@ function checkExamEligibility() {
   }
 
   const consultationDate = $("#visit-date")?.value || getTodayDate();
-  const previousExam = getPreviousCompletedExam(patient.id, consultationDate);
+  const eligibility = getConsultationEligibility(patient.id, consultationDate);
 
-  setExamCheckMessage(previousExam
+  setExamCheckMessage(eligibility.allowed
     ? (currentLanguage === "ar"
-        ? `المريض مسجل، وآخر كشف مكتمل بتاريخ ${previousExam.date}. يمكن تسجيل استشارة.`
-        : `Patient found. Last completed examination: ${previousExam.date}. Consultation is allowed.`)
-    : (currentLanguage === "ar"
-        ? "المريض مسجل، لكن مفيش كشف مكتمل قبل تاريخ الاستشارة المختار."
-        : "Patient found, but there is no completed examination before the selected consultation date."),
-    previousExam ? "success" : "error");
+        ? `المريض مسجل، وآخر كشف مكتمل بتاريخ ${eligibility.previousExam.date}. يمكن تسجيل الاستشارة رقم ${eligibility.consultationCount + 1} من 2 هذا الشهر.`
+        : `Patient found. Last completed examination: ${eligibility.previousExam.date}. This will be consultation ${eligibility.consultationCount + 1} of 2 this month.`)
+    : getConsultationEligibilityMessage(eligibility),
+    eligibility.allowed ? "success" : "error");
 }
 
 
@@ -744,15 +821,13 @@ async function saveEditedVisit(event) {
 
   if (!type || !date) return;
 
-  if (
-    type === "consultation" &&
-    !getPreviousCompletedExam(visit.patientId, date)
-  ) {
-    message.textContent = currentLanguage === "ar"
-      ? "لا يمكن تعديل الموعد إلى استشارة من غير كشف سابق مكتمل."
-      : "This visit cannot be changed to a consultation without a completed previous examination.";
-    message.style.color = "#dc2626";
-    return;
+  if (type === "consultation") {
+    const eligibility = getConsultationEligibility(visit.patientId, date, visit.id);
+    if (!eligibility.allowed) {
+      message.textContent = getConsultationEligibilityMessage(eligibility);
+      message.style.color = "#dc2626";
+      return;
+    }
   }
 
   visit.type = type;
@@ -1092,15 +1167,13 @@ async function addPatient(event) {
   }
 
   if (visitType === "consultation") {
-    const previousExam = existingPatient
-      ? getPreviousCompletedExam(existingPatient.id, visitDate)
-      : null;
+    const eligibility = existingPatient
+      ? getConsultationEligibility(existingPatient.id, visitDate)
+      : { allowed: false, reason: "examMissing" };
 
-    if (!previousExam) {
+    if (!eligibility.allowed) {
       showMessage(
-        currentLanguage === "ar"
-          ? "لا يمكن تسجيل استشارة قبل وجود كشف سابق مكتمل. سجّل الكشف وأنهِه أولاً."
-          : "A consultation requires a completed previous examination. Register and complete the examination first.",
+        getConsultationEligibilityMessage(eligibility),
         true
       );
 

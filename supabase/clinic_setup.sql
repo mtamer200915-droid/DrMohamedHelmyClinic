@@ -87,6 +87,12 @@ set search_path = pg_catalog, public, auth
 as $$
 declare
   visit jsonb;
+  prior_visit jsonb;
+  latest_exam jsonb;
+  exam_date date;
+  visit_date date;
+  consultations_in_month bigint;
+  is_initial_data_migration boolean;
 begin
   if new.version <> old.version + 1 then
     raise exception 'Clinic data changed on another device. Reload and retry.'
@@ -100,6 +106,10 @@ begin
     raise exception 'Invalid clinic data document.' using errcode = '22023';
   end if;
 
+  is_initial_data_migration := old.version = 0
+    and jsonb_array_length(old.data->'queue') = 0
+    and jsonb_array_length(new.data->'queue') > 1;
+
   for visit in select value from jsonb_array_elements(new.data->'queue')
   loop
     if coalesce(visit->>'type', '') not in ('exam', 'consultation')
@@ -108,17 +118,56 @@ begin
       raise exception 'Invalid visit record.' using errcode = '22023';
     end if;
 
-    if visit->>'type' = 'consultation' and not exists (
-      select 1
+    if visit->>'type' = 'consultation' then
+      select candidate.item
+      into latest_exam
       from jsonb_array_elements(new.data->'queue') as candidate(item)
       where candidate.item->>'patientId' = visit->>'patientId'
         and candidate.item->>'type' = 'exam'
         and candidate.item->>'status' = 'done'
         and candidate.item->>'date' <= visit->>'date'
-        and candidate.item->>'id' <> visit->>'id'
-    ) then
-      raise exception 'A consultation requires a completed earlier examination.'
-        using errcode = '23514';
+      order by candidate.item->>'date' desc
+      limit 1;
+
+      if latest_exam is null then
+        raise exception 'A consultation requires a completed earlier examination.'
+          using errcode = '23514';
+      end if;
+
+      select previous.item
+      into prior_visit
+      from jsonb_array_elements(old.data->'queue') as previous(item)
+      where previous.item->>'id' = visit->>'id'
+      limit 1;
+
+      if not is_initial_data_migration
+        and (
+          prior_visit is null
+          or prior_visit->>'type' is distinct from 'consultation'
+          or prior_visit->>'patientId' is distinct from visit->>'patientId'
+          or prior_visit->>'date' is distinct from visit->>'date'
+        ) then
+        exam_date := (latest_exam->>'date')::date;
+        visit_date := (visit->>'date')::date;
+
+        if visit_date > (exam_date + interval '1 month')::date then
+          raise exception 'A new examination is required after one month.'
+            using errcode = '23514';
+        end if;
+
+        select count(*)
+        into consultations_in_month
+        from jsonb_array_elements(new.data->'queue') as scheduled(item)
+        where scheduled.item->>'patientId' = visit->>'patientId'
+          and scheduled.item->>'type' = 'consultation'
+          and left(scheduled.item->>'date', 7) = left(visit->>'date', 7)
+          and scheduled.item->>'id' <> visit->>'id';
+
+        if consultations_in_month >= 2 then
+          raise exception 'A patient may have at most two consultations per month.'
+            using errcode = '23514';
+        end if;
+      end if;
     end if;
   end loop;
 
