@@ -503,6 +503,16 @@ function showCloudLogin(message = "") {
 }
 
 
+function lockCloudLogin(message) {
+  $("#cloud-login-form")
+    ?.querySelectorAll("input, button[type='submit']")
+    .forEach((control) => {
+      control.disabled = true;
+    });
+  showCloudLogin(message);
+}
+
+
 function showClinicApp() {
   $("#cloud-login-panel")?.classList.add("hidden");
   $("#clinic-app")?.classList.remove("hidden");
@@ -656,13 +666,20 @@ async function initializeCloudApp() {
   const hasUrl = Boolean(config.supabaseUrl?.trim());
   const hasKey = Boolean(config.publishableKey?.trim());
 
-  if (!hasUrl && !hasKey) return false;
-
   cloudMode = true;
   showCloudLogin();
 
+  if (!hasUrl && !hasKey) {
+    lockCloudLogin(
+      currentLanguage === "ar"
+        ? "التطبيق مقفول. يلزم إعداد قاعدة البيانات السحابية وحسابات الدخول قبل فتح بيانات العيادة."
+        : "The app is locked. Configure the cloud database and staff sign-in accounts before accessing clinic records."
+    );
+    return true;
+  }
+
   if (!hasUrl || !hasKey) {
-    showCloudLogin(
+    lockCloudLogin(
       currentLanguage === "ar"
         ? "إعداد الاتصال السحابي غير مكتمل."
         : "Cloud connection settings are incomplete."
@@ -671,7 +688,7 @@ async function initializeCloudApp() {
   }
 
   if (!window.supabase?.createClient) {
-    showCloudLogin(
+    lockCloudLogin(
       currentLanguage === "ar"
         ? "تعذر تحميل خدمة الاتصال السحابي. تأكد من اتصال الإنترنت."
         : "Could not load the cloud client. Check the internet connection."
@@ -1777,12 +1794,7 @@ document.addEventListener(
       }
     });
 
-    const cloudConfigured = await initializeCloudApp();
-    if (!cloudConfigured) {
-      loadClinicData();
-      updatePageTitle();
-      renderClinicData();
-    }
+    await initializeCloudApp();
 
   }
 );

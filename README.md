@@ -12,7 +12,7 @@ A bilingual Arabic/English clinic queue and patient-record web app.
 
 ## Shared access from multiple devices
 
-The optional Supabase setup adds sign-in and shared clinic data for authorized staff. Follow [CLOUD-SETUP.md](CLOUD-SETUP.md) before entering project settings. The browser uses only a public publishable key; never put a secret or service-role key in this repository. GitHub Pages hosts the app interface, while Supabase stores the clinic records.
+Supabase sign-in is required to access the clinic app and shared data. Follow [CLOUD-SETUP.md](CLOUD-SETUP.md) to set up staff accounts and the project. The browser uses only a public publishable key; never put a secret or service-role key in this repository. GitHub Pages hosts the app interface, while Supabase stores the clinic records.
 
 ## Consultation rule
 
@@ -22,4 +22,4 @@ The secretary can choose a date to view appointments, then edit or permanently d
 
 ## Run
 
-Open `index.html` in a browser. If the app is hosted, use the same browser and hosted address each time so the browser can find the same saved records.
+Complete [CLOUD-SETUP.md](CLOUD-SETUP.md) first, then open the GitHub Pages link and sign in. The app stays locked until cloud sign-in is configured.

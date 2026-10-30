@@ -182,6 +182,11 @@ nav {
     line-height: 1.7;
 }
 
+.cloud-login-card :disabled {
+    cursor: not-allowed;
+    opacity: .6;
+}
+
 .subtitle {
     color: var(--blue);
     font-size: 12px;
