@@ -220,21 +220,25 @@
                         <h3 data-ar="قائمة المرضى"
                             data-en="Patient List">قائمة المرضى</h3>
 
-                        <div class="backup-actions">
-                            <button id="export-data-btn" type="button" class="secondary-btn"
-                                    data-ar="تنزيل نسخة احتياطية"
-                                    data-en="Download Backup">تنزيل نسخة احتياطية</button>
-                            <button id="import-data-btn" type="button" class="secondary-btn"
-                                    data-ar="استعادة نسخة احتياطية"
-                                    data-en="Restore Backup">استعادة نسخة احتياطية</button>
-                            <input id="import-data-file" type="file" accept=".json,application/json" hidden>
-                        </div>
-                        <p class="storage-note"
-                           data-ar="الحفظ تلقائي على هذا الجهاز فقط. نزّل نسخة احتياطية بانتظام؛ ملف النسخة يحتوي على بيانات المرضى."
-                           data-en="Data is saved automatically on this device only. Download backups regularly; the backup file contains patient information.">
-                            الحفظ تلقائي على هذا الجهاز فقط. نزّل نسخة احتياطية بانتظام؛ ملف النسخة يحتوي على بيانات المرضى.
-                        </p>
-                        <p id="backup-message" role="status" aria-live="polite"></p>
+                        <details class="data-tools">
+                            <summary data-ar="إدارة البيانات والنسخ الاحتياطي"
+                                     data-en="Data and Backups">إدارة البيانات والنسخ الاحتياطي</summary>
+                            <p class="storage-note"
+                               data-ar="الحفظ التلقائي حاليًا على هذا الجهاز فقط. ملف النسخة يحتوي على بيانات المرضى؛ احتفظ به في مكان آمن."
+                               data-en="Automatic saving is currently on this device only. Backup files contain patient information; keep them somewhere safe.">
+                                الحفظ التلقائي حاليًا على هذا الجهاز فقط. ملف النسخة يحتوي على بيانات المرضى؛ احتفظ به في مكان آمن.
+                            </p>
+                            <div class="backup-actions">
+                                <button id="export-data-btn" type="button" class="secondary-btn"
+                                        data-ar="تنزيل نسخة احتياطية"
+                                        data-en="Download Backup">تنزيل نسخة احتياطية</button>
+                                <button id="import-data-btn" type="button" class="secondary-btn"
+                                        data-ar="استعادة نسخة احتياطية"
+                                        data-en="Restore Backup">استعادة نسخة احتياطية</button>
+                                <input id="import-data-file" type="file" accept=".json,application/json" hidden>
+                            </div>
+                            <p id="backup-message" role="status" aria-live="polite"></p>
+                        </details>
 
                         <input id="search-input" type="search"
                                data-ar-placeholder="ابحث بالاسم أو الهاتف"

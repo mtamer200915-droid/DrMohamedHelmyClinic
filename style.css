@@ -334,6 +334,25 @@ textarea {
     margin: 12px 0 8px;
 }
 
+.data-tools {
+    margin: 12px 0 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #f8faff;
+}
+
+.data-tools summary {
+    color: var(--dark-blue);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.data-tools[open] {
+    padding-bottom: 4px;
+}
+
 .backup-actions .secondary-btn {
     flex: 1 1 150px;
 }
