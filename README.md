@@ -10,6 +10,10 @@ A bilingual Arabic/English clinic queue and patient-record web app.
 - Backup files contain patient information. Keep them in a private, protected location and do not commit them to this repository.
 - Browser storage is not encrypted. This is suitable for a prototype or local demo, not a secure production patient-record system. A real clinic deployment should use a protected database with user access controls and backups.
 
+## Shared access from multiple devices
+
+The optional Supabase setup adds sign-in and shared clinic data for authorized staff. Follow [CLOUD-SETUP.md](CLOUD-SETUP.md) before entering project settings. The browser uses only a public publishable key; never put a secret or service-role key in this repository. GitHub Pages hosts the app interface, while Supabase stores the clinic records.
+
 ## Consultation rule
 
 When **Consultation** is selected, the app automatically checks the patient by phone number. A consultation can be saved only when that patient has a completed examination on or before the consultation date. Complete the examination from the queue first.

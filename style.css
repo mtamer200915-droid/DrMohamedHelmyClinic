@@ -133,6 +133,55 @@ nav {
     margin-bottom: 24px;
 }
 
+.header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.cloud-login {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+}
+
+.cloud-login-card {
+    width: min(420px, 100%);
+    display: grid;
+    gap: 10px;
+}
+
+.cloud-login-card .logo {
+    margin-bottom: 8px;
+}
+
+.cloud-login-card h1 {
+    font-size: 23px;
+}
+
+.cloud-login-card > p {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.cloud-login-card label {
+    margin: 6px 0 0;
+    color: #42536d;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+#cloud-login-message {
+    min-height: 20px;
+    color: #dc2626;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
 .subtitle {
     color: var(--blue);
     font-size: 12px;
@@ -334,23 +383,8 @@ textarea {
     margin: 12px 0 8px;
 }
 
-.data-tools {
-    margin: 12px 0 8px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #f8faff;
-}
-
-.data-tools summary {
-    color: var(--dark-blue);
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 650;
-}
-
-.data-tools[open] {
-    padding-bottom: 4px;
+.data-management-panel h3:not(:first-child) {
+    margin-top: 28px;
 }
 
 .backup-actions .secondary-btn {
@@ -567,7 +601,7 @@ footer {
     }
 
     nav {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .nav-btn {

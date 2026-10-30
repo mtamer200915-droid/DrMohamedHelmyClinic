@@ -6,11 +6,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>عيادة الدكتور محمد حلمي</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="supabase-config.js" defer></script>
     <script src="app.js" defer></script>
 </head>
 <body>
 
-    <div class="layout">
+    <section id="cloud-login-panel" class="cloud-login hidden">
+        <form id="cloud-login-form" class="panel cloud-login-card">
+            <div class="logo">✚</div>
+            <h1 data-ar="تسجيل دخول العيادة"
+                data-en="Clinic Sign In">تسجيل دخول العيادة</h1>
+            <p data-ar="سجّل الدخول لفتح بيانات العيادة المشتركة."
+               data-en="Sign in to open the shared clinic records.">
+                سجّل الدخول لفتح بيانات العيادة المشتركة.
+            </p>
+
+            <label for="cloud-email"
+                   data-ar="البريد الإلكتروني"
+                   data-en="Email">البريد الإلكتروني</label>
+            <input id="cloud-email" type="email" autocomplete="username" required>
+
+            <label for="cloud-password"
+                   data-ar="كلمة المرور"
+                   data-en="Password">كلمة المرور</label>
+            <input id="cloud-password" type="password" autocomplete="current-password" required>
+
+            <button type="submit" class="primary-btn"
+                    data-ar="دخول"
+                    data-en="Sign In">دخول</button>
+            <p id="cloud-login-message" role="status" aria-live="polite"></p>
+        </form>
+    </section>
+
+    <div id="clinic-app" class="layout">
 
         <aside class="sidebar">
             <div class="brand">
@@ -37,6 +66,11 @@
                     <span>☷</span>
                     <span data-ar="المواعيد والدور" data-en="Appointments & Queue">المواعيد والدور</span>
                 </button>
+
+                <button class="nav-btn" data-page="data">
+                    <span>▤</span>
+                    <span data-ar="البيانات" data-en="Data">البيانات</span>
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -58,9 +92,12 @@
                         data-en="Dashboard">لوحة التحكم</h1>
                 </div>
 
-                <button id="language-btn" class="language-btn">
-                    English
-                </button>
+                <div class="header-actions">
+                    <button id="logout-btn" class="secondary-btn hidden"
+                            data-ar="تسجيل الخروج"
+                            data-en="Sign Out">تسجيل الخروج</button>
+                    <button id="language-btn" class="language-btn">English</button>
+                </div>
             </header>
 
             <section class="hero">
@@ -220,26 +257,6 @@
                         <h3 data-ar="قائمة المرضى"
                             data-en="Patient List">قائمة المرضى</h3>
 
-                        <details class="data-tools">
-                            <summary data-ar="إدارة البيانات والنسخ الاحتياطي"
-                                     data-en="Data and Backups">إدارة البيانات والنسخ الاحتياطي</summary>
-                            <p class="storage-note"
-                               data-ar="الحفظ التلقائي حاليًا على هذا الجهاز فقط. ملف النسخة يحتوي على بيانات المرضى؛ احتفظ به في مكان آمن."
-                               data-en="Automatic saving is currently on this device only. Backup files contain patient information; keep them somewhere safe.">
-                                الحفظ التلقائي حاليًا على هذا الجهاز فقط. ملف النسخة يحتوي على بيانات المرضى؛ احتفظ به في مكان آمن.
-                            </p>
-                            <div class="backup-actions">
-                                <button id="export-data-btn" type="button" class="secondary-btn"
-                                        data-ar="تنزيل نسخة احتياطية"
-                                        data-en="Download Backup">تنزيل نسخة احتياطية</button>
-                                <button id="import-data-btn" type="button" class="secondary-btn"
-                                        data-ar="استعادة نسخة احتياطية"
-                                        data-en="Restore Backup">استعادة نسخة احتياطية</button>
-                                <input id="import-data-file" type="file" accept=".json,application/json" hidden>
-                            </div>
-                            <p id="backup-message" role="status" aria-live="polite"></p>
-                        </details>
-
                         <input id="search-input" type="search"
                                data-ar-placeholder="ابحث بالاسم أو الهاتف"
                                data-en-placeholder="Search by name or phone"
@@ -301,6 +318,43 @@
                     </table>
                 </div>
 
+            </section>
+
+            <section id="data-page" class="page hidden">
+                <div class="section-heading">
+                    <div>
+                        <h2 data-ar="إدارة البيانات"
+                            data-en="Data Management">إدارة البيانات</h2>
+                        <p data-ar="حالة الحفظ، المزامنة، والنسخ الاحتياطية للعيادة."
+                           data-en="Clinic saving status, syncing, and backups.">
+                            حالة الحفظ، المزامنة، والنسخ الاحتياطية للعيادة.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="panel data-management-panel">
+                    <h3 data-ar="حالة البيانات"
+                        data-en="Data Status">حالة البيانات</h3>
+                    <p id="data-sync-note" class="storage-note" role="status" aria-live="polite"></p>
+
+                    <h3 data-ar="النسخ الاحتياطية"
+                        data-en="Backups">النسخ الاحتياطية</h3>
+                    <p class="storage-note"
+                       data-ar="ملف النسخة يحتوي على بيانات المرضى؛ احتفظ به في مكان آمن."
+                       data-en="Backup files contain patient information; keep them somewhere safe.">
+                        ملف النسخة يحتوي على بيانات المرضى؛ احتفظ به في مكان آمن.
+                    </p>
+                    <div class="backup-actions">
+                        <button id="export-data-btn" type="button" class="secondary-btn"
+                                data-ar="تنزيل نسخة احتياطية"
+                                data-en="Download Backup">تنزيل نسخة احتياطية</button>
+                        <button id="import-data-btn" type="button" class="secondary-btn"
+                                data-ar="استعادة نسخة احتياطية"
+                                data-en="Restore Backup">استعادة نسخة احتياطية</button>
+                        <input id="import-data-file" type="file" accept=".json,application/json" hidden>
+                    </div>
+                    <p id="backup-message" role="status" aria-live="polite"></p>
+                </div>
             </section>
 
             <dialog id="edit-visit-dialog" class="edit-dialog" aria-labelledby="edit-visit-title">

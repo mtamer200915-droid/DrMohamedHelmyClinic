@@ -12,6 +12,12 @@ let storageStatus = "ready";
 let backupStatus = "";
 let lastRecordId = 0;
 let editingVisitId = null;
+let cloudClient = null;
+let cloudMode = false;
+let cloudVersion = 0;
+let cloudSessionUser = null;
+let cloudChannel = null;
+let cloudSessionReady = false;
 
 
 // ========================================
@@ -141,8 +147,8 @@ function setBackupMessage(key) {
       en: "This file is not a valid clinic backup."
     },
     saveError: {
-      ar: "تعذر حفظ النسخة على هذا الجهاز.",
-      en: "Could not save the backup on this device."
+      ar: "تعذر حفظ النسخة الاحتياطية.",
+      en: "Could not save the backup."
     },
     restored: {
       ar: "تمت استعادة البيانات بنجاح.",
@@ -224,10 +230,50 @@ function updateStorageStatus() {
     error: {
       ar: "تعذر حفظ البيانات. نزّل نسخة احتياطية الآن.",
       en: "Data could not be saved. Download a backup now."
+    },
+    cloudReady: {
+      ar: "متصل ببيانات العيادة المشتركة.",
+      en: "Connected to shared clinic data."
+    },
+    cloudLoaded: {
+      ar: "تم تحميل أحدث بيانات العيادة المشتركة.",
+      en: "Latest shared clinic data loaded."
+    },
+    cloudSaved: {
+      ar: "تم حفظ التغييرات للعيادة على كل الأجهزة.",
+      en: "Changes saved for the clinic on all devices."
+    },
+    cloudError: {
+      ar: "تعذر الاتصال بقاعدة البيانات. لم يتم حفظ التغيير.",
+      en: "Could not connect to the database. The change was not saved."
+    },
+    conflict: {
+      ar: "تم تحديث البيانات من جهاز آخر. راجع البيانات وأعد المحاولة.",
+      en: "Another device updated the data. Review it and try again."
     }
   };
 
   status.textContent = messages[storageStatus][currentLanguage];
+
+  const syncNote = $("#data-sync-note");
+  if (syncNote) {
+    const note = cloudSessionReady
+      ? {
+          ar: "البيانات مشتركة ومتزامنة للسكرتيرة والدكتور على الأجهزة المسجلين عليها.",
+          en: "Clinic records are shared with signed-in staff across devices."
+        }
+      : cloudMode
+        ? {
+            ar: "قاعدة البيانات السحابية مُعدة. سجّل الدخول لعرض البيانات المشتركة.",
+            en: "Cloud access is configured. Sign in to view shared records."
+          }
+        : {
+            ar: "الحفظ الحالي على هذا الجهاز فقط. يلزم إعداد قاعدة سحابية لمشاركة البيانات بين الأجهزة.",
+            en: "Saving is currently on this device only. Configure a cloud database to share records across devices."
+          };
+
+    syncNote.textContent = note[currentLanguage];
+  }
 }
 
 
@@ -246,18 +292,7 @@ function loadClinicData() {
       return;
     }
 
-    patients = data.patients;
-    queue = data.queue;
-
-    const highestQueueNumber = queue.reduce(
-      (highest, visit) => Math.max(highest, Number(visit.queueNumber) || 0),
-      0
-    );
-
-    nextQueueNumber = Math.max(
-      Number(data.nextQueueNumber) || 1,
-      highestQueueNumber + 1
-    );
+    applyClinicData(data);
 
     storageStatus = "loaded";
   } catch (error) {
@@ -268,17 +303,56 @@ function loadClinicData() {
 }
 
 
+function getClinicDataPayload() {
+  return {
+    version: 1,
+    patients,
+    queue,
+    nextQueueNumber,
+    savedAt: new Date().toISOString()
+  };
+}
+
+
+function applyClinicData(data) {
+  patients = data.patients;
+  queue = data.queue;
+
+  const highestQueueNumber = queue.reduce(
+    (highest, visit) => Math.max(highest, Number(visit.queueNumber) || 0),
+    0
+  );
+
+  nextQueueNumber = Math.max(
+    Number(data.nextQueueNumber) || 1,
+    highestQueueNumber + 1
+  );
+
+  lastRecordId = Math.max(
+    lastRecordId,
+    ...patients.map((patient) => Number(patient.id) || 0),
+    ...queue.map((visit) => Number(visit.id) || 0)
+  );
+}
+
+
+function renderClinicData() {
+  renderPatients();
+  renderQueue();
+  updateDashboard();
+}
+
+
 function saveClinicData() {
+  return cloudMode ? saveCloudClinicData() : saveLocalClinicData();
+}
+
+
+function saveLocalClinicData() {
   try {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        patients,
-        queue,
-        nextQueueNumber,
-        savedAt: new Date().toISOString()
-      })
+      JSON.stringify(getClinicDataPayload())
     );
 
     storageStatus = "saved";
@@ -289,6 +363,293 @@ function saveClinicData() {
     updateStorageStatus();
     return false;
   }
+}
+
+
+async function saveCloudClinicData() {
+  if (!cloudClient || !cloudSessionUser) {
+    storageStatus = "cloudError";
+    updateStorageStatus();
+    return false;
+  }
+
+  try {
+    const { data, error } = await cloudClient
+      .from("clinic_state")
+      .update({
+        data: getClinicDataPayload(),
+        version: cloudVersion + 1
+      })
+      .eq("id", 1)
+      .eq("version", cloudVersion)
+      .select("version")
+      .maybeSingle();
+
+    if (error || !data) {
+      const wasConflict = error?.code === "40001" || (!error && !data);
+      await loadCloudClinicData(true);
+      storageStatus = wasConflict ? "conflict" : "cloudError";
+      updateStorageStatus();
+      return false;
+    }
+
+    cloudVersion = Number(data.version);
+    storageStatus = "cloudSaved";
+    updateStorageStatus();
+    return true;
+  } catch (error) {
+    storageStatus = "cloudError";
+    updateStorageStatus();
+    return false;
+  }
+}
+
+
+function getLocalDataForMigration() {
+  try {
+    const savedData = localStorage.getItem(STORAGE_KEY);
+    if (!savedData) return null;
+
+    const data = JSON.parse(savedData);
+    return isValidClinicData(data) ? data : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+
+function showCloudLogin(message = "") {
+  $("#clinic-app")?.classList.add("hidden");
+  $("#cloud-login-panel")?.classList.remove("hidden");
+  $("#logout-btn")?.classList.add("hidden");
+  $("#cloud-login-message").textContent = message;
+}
+
+
+function showClinicApp() {
+  $("#cloud-login-panel")?.classList.add("hidden");
+  $("#clinic-app")?.classList.remove("hidden");
+  $("#logout-btn")?.classList.remove("hidden");
+}
+
+
+async function loadCloudClinicData(shouldRender = true) {
+  if (!cloudClient) return false;
+
+  try {
+    const { data, error } = await cloudClient
+      .from("clinic_state")
+      .select("data, version")
+      .eq("id", 1)
+      .single();
+
+    if (error || !data || !isValidClinicData(data.data)) return false;
+
+    applyClinicData(data.data);
+    cloudVersion = Number(data.version);
+
+    if (shouldRender) {
+      storageStatus = "cloudLoaded";
+      updateStorageStatus();
+      renderClinicData();
+    }
+
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+
+function subscribeToCloudChanges() {
+  if (!cloudClient) return;
+
+  if (cloudChannel) {
+    cloudClient.removeChannel(cloudChannel);
+  }
+
+  cloudChannel = cloudClient
+    .channel("clinic-shared-state")
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "clinic_state",
+        filter: "id=eq.1"
+      },
+      (payload) => {
+        const incomingVersion = Number(payload.new?.version);
+        if (
+          incomingVersion <= cloudVersion ||
+          !isValidClinicData(payload.new?.data)
+        ) {
+          return;
+        }
+
+        applyClinicData(payload.new.data);
+        cloudVersion = incomingVersion;
+        storageStatus = "cloudLoaded";
+        updateStorageStatus();
+        renderClinicData();
+      }
+    )
+    .subscribe();
+}
+
+
+async function openCloudSession(session) {
+  if (!session?.user) return;
+
+  if (cloudSessionUser?.id === session.user.id && cloudSessionReady) {
+    showClinicApp();
+    return;
+  }
+
+  if (cloudSessionUser?.id === session.user.id) return;
+
+  cloudSessionUser = session.user;
+  cloudMode = true;
+  showClinicApp();
+  storageStatus = "cloudReady";
+  updateStorageStatus();
+
+  const localData = getLocalDataForMigration();
+  const loaded = await loadCloudClinicData(false);
+
+  if (!loaded) {
+    cloudSessionUser = null;
+    cloudSessionReady = false;
+    showCloudLogin(
+      currentLanguage === "ar"
+        ? "تعذر تحميل بيانات العيادة. تأكد من إعداد قاعدة البيانات وصلاحيات الحساب."
+        : "Could not load clinic data. Check the database setup and account access."
+    );
+    return;
+  }
+
+  const cloudIsEmpty = patients.length === 0 && queue.length === 0;
+  const localHasData = localData && (localData.patients.length > 0 || localData.queue.length > 0);
+
+  if (cloudIsEmpty && localHasData) {
+    const shouldUpload = window.confirm(
+      currentLanguage === "ar"
+        ? "وجدت بيانات محفوظة على هذا الجهاز. هل تريد رفعها إلى قاعدة بيانات العيادة لتظهر للسكرتيرة والدكتور على أجهزتهم؟"
+        : "This device has saved records. Upload them to the shared clinic database so the secretary and doctor can access them?"
+    );
+
+    if (shouldUpload) {
+      applyClinicData(localData);
+      const saved = await saveCloudClinicData();
+      if (!saved) {
+        await loadCloudClinicData(true);
+        cloudSessionReady = true;
+        subscribeToCloudChanges();
+        return;
+      }
+    }
+  }
+
+  storageStatus = "cloudLoaded";
+  updateStorageStatus();
+  renderClinicData();
+  cloudSessionReady = true;
+  subscribeToCloudChanges();
+}
+
+
+function handleCloudSignOut() {
+  cloudSessionUser = null;
+  cloudSessionReady = false;
+  cloudVersion = 0;
+  if (cloudChannel && cloudClient) {
+    cloudClient.removeChannel(cloudChannel);
+    cloudChannel = null;
+  }
+  patients = [];
+  queue = [];
+  nextQueueNumber = 1;
+  $("#cloud-password").value = "";
+  showCloudLogin();
+}
+
+
+async function initializeCloudApp() {
+  const config = window.CLINIC_CLOUD_CONFIG || {};
+  const hasUrl = Boolean(config.supabaseUrl?.trim());
+  const hasKey = Boolean(config.publishableKey?.trim());
+
+  if (!hasUrl && !hasKey) return false;
+
+  cloudMode = true;
+  showCloudLogin();
+
+  if (!hasUrl || !hasKey) {
+    showCloudLogin(
+      currentLanguage === "ar"
+        ? "إعداد الاتصال السحابي غير مكتمل."
+        : "Cloud connection settings are incomplete."
+    );
+    return true;
+  }
+
+  if (!window.supabase?.createClient) {
+    showCloudLogin(
+      currentLanguage === "ar"
+        ? "تعذر تحميل خدمة الاتصال السحابي. تأكد من اتصال الإنترنت."
+        : "Could not load the cloud client. Check the internet connection."
+    );
+    return true;
+  }
+
+  cloudClient = window.supabase.createClient(config.supabaseUrl, config.publishableKey);
+
+  $("#cloud-login-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = $("#cloud-login-message");
+    message.textContent = currentLanguage === "ar" ? "جارٍ تسجيل الدخول..." : "Signing in...";
+
+    const { error } = await cloudClient.auth.signInWithPassword({
+      email: $("#cloud-email").value.trim(),
+      password: $("#cloud-password").value
+    });
+
+    if (error) {
+      showCloudLogin(
+        currentLanguage === "ar"
+          ? "تعذر تسجيل الدخول. راجع البريد وكلمة المرور أو صلاحية الحساب."
+          : "Sign-in failed. Check the email, password, and account access."
+      );
+    }
+  });
+
+  $("#logout-btn")?.addEventListener("click", async () => {
+    const { error } = await cloudClient.auth.signOut();
+    if (error) {
+      storageStatus = "cloudError";
+      updateStorageStatus();
+    }
+  });
+
+  cloudClient.auth.onAuthStateChange((event, session) => {
+    window.setTimeout(() => {
+      if (session) openCloudSession(session);
+      else handleCloudSignOut();
+    }, 0);
+  });
+
+  const { data, error } = await cloudClient.auth.getSession();
+  if (error) {
+    showCloudLogin(
+      currentLanguage === "ar"
+        ? "تعذر التحقق من جلسة الدخول. سجّل الدخول مرة أخرى."
+        : "Could not check the sign-in session. Please sign in again."
+    );
+  } else if (data.session) {
+    await openCloudSession(data.session);
+  }
+
+  return true;
 }
 
 
@@ -327,25 +688,20 @@ async function importClinicData(event) {
     }
 
     const confirmed = window.confirm(
-      currentLanguage === "ar"
-        ? "استعادة النسخة ستستبدل البيانات الحالية على هذا الجهاز. هل تريد المتابعة؟"
-        : "Restoring this backup will replace the current data on this device. Continue?"
+      cloudMode
+        ? (currentLanguage === "ar"
+            ? "استعادة النسخة ستستبدل بيانات العيادة المشتركة لجميع الأجهزة. هل تريد المتابعة؟"
+            : "Restoring this backup will replace the shared clinic data for all devices. Continue?")
+        : (currentLanguage === "ar"
+            ? "استعادة النسخة ستستبدل البيانات الحالية على هذا الجهاز. هل تريد المتابعة؟"
+            : "Restoring this backup will replace the current data on this device. Continue?")
     );
 
     if (!confirmed) return;
 
-    patients = data.patients;
-    queue = data.queue;
-    const highestQueueNumber = data.queue.reduce(
-      (highest, visit) => Math.max(highest, Number(visit.queueNumber) || 0),
-      0
-    );
-    nextQueueNumber = Math.max(
-      Number(data.nextQueueNumber) || 1,
-      highestQueueNumber + 1
-    );
+    applyClinicData(data);
 
-    if (!saveClinicData()) {
+    if (!await saveClinicData()) {
       setBackupMessage("saveError");
       return;
     }
@@ -375,7 +731,7 @@ function openVisitEditor(visit) {
 }
 
 
-function saveEditedVisit(event) {
+async function saveEditedVisit(event) {
   event.preventDefault();
 
   const visit = queue.find((item) => item.id === editingVisitId);
@@ -405,15 +761,19 @@ function saveEditedVisit(event) {
   const queueDateFilter = $("#queue-date-filter");
   if (queueDateFilter) queueDateFilter.value = date;
 
-  const wasSaved = saveClinicData();
+  const wasSaved = await saveClinicData();
   $("#edit-visit-dialog").close();
   editingVisitId = null;
 
   if (!wasSaved) {
     showMessage(
-      currentLanguage === "ar"
-        ? "تم تعديل الموعد مؤقتاً، لكن تعذر حفظه على هذا الجهاز."
-        : "Visit was edited for this session, but could not be saved on this device.",
+      cloudMode
+        ? (currentLanguage === "ar"
+            ? "تم تعديل الموعد مؤقتاً، لكن تعذر حفظه في قاعدة البيانات المشتركة."
+            : "Visit was edited for this session, but could not be saved to the shared database.")
+        : (currentLanguage === "ar"
+            ? "تم تعديل الموعد مؤقتاً، لكن تعذر حفظه على هذا الجهاز."
+            : "Visit was edited for this session, but could not be saved on this device."),
       true
     );
   }
@@ -424,7 +784,7 @@ function saveEditedVisit(event) {
 }
 
 
-function cancelVisit(visit) {
+async function cancelVisit(visit) {
   if (
     visit.status !== "waiting" ||
     !window.confirm(
@@ -443,7 +803,7 @@ function cancelVisit(visit) {
     patients = patients.filter((patient) => patient.id !== patientId);
   }
 
-  saveClinicData();
+  await saveClinicData();
   renderPatients();
   renderQueue();
   updateDashboard();
@@ -578,6 +938,11 @@ function updatePageTitle() {
     queue: {
       ar: "المواعيد والدور",
       en: "Appointments & Queue"
+    },
+
+    data: {
+      ar: "إدارة البيانات",
+      en: "Data Management"
     }
 
   };
@@ -671,7 +1036,7 @@ function showMessage(message, isError = false) {
 // إضافة مريض
 // ========================================
 
-function addPatient(event) {
+async function addPatient(event) {
 
   event.preventDefault();
 
@@ -778,7 +1143,7 @@ function addPatient(event) {
   queue.push(visit);
   const queueDateFilter = $("#queue-date-filter");
   if (queueDateFilter) queueDateFilter.value = visitDate;
-  const wasSaved = saveClinicData();
+  const wasSaved = await saveClinicData();
 
 
   // تفريغ النموذج
@@ -800,8 +1165,12 @@ function addPatient(event) {
           ? "تم حفظ الزيارة وإضافتها إلى الدور."
           : "Visit saved and added to the queue.")
       : (currentLanguage === "ar"
-          ? "تمت إضافة الزيارة مؤقتاً، لكن تعذر حفظها على الجهاز. نزّل نسخة احتياطية."
-          : "Visit was added for this session, but could not be saved on this device. Download a backup."),
+          ? (cloudMode
+              ? "تمت إضافة الزيارة مؤقتاً، لكن تعذر حفظها في قاعدة البيانات المشتركة."
+              : "تمت إضافة الزيارة مؤقتاً، لكن تعذر حفظها على الجهاز. نزّل نسخة احتياطية.")
+          : (cloudMode
+              ? "Visit was added for this session, but could not be saved to the shared database."
+              : "Visit was added for this session, but could not be saved on this device. Download a backup.")),
     !wasSaved
   );
 
@@ -1005,9 +1374,9 @@ function renderQueue() {
 
     if (visit.status === "waiting") {
       nextButton.textContent = currentLanguage === "ar" ? "بدء الزيارة" : "Start Visit";
-      nextButton.addEventListener("click", () => {
+      nextButton.addEventListener("click", async () => {
         visit.status = "in_doctor";
-        saveClinicData();
+        await saveClinicData();
         renderQueue();
         updateDashboard();
       });
@@ -1027,10 +1396,10 @@ function renderQueue() {
       actions.append(nextButton, editButton, cancelButton);
     } else if (visit.status === "in_doctor") {
       nextButton.textContent = currentLanguage === "ar" ? "إنهاء" : "Complete";
-      nextButton.addEventListener("click", () => {
+      nextButton.addEventListener("click", async () => {
         visit.status = "done";
         visit.completedAt = new Date().toISOString();
-        saveClinicData();
+        await saveClinicData();
         renderQueue();
         updateDashboard();
       });
@@ -1186,9 +1555,7 @@ function updateDashboard() {
 
 document.addEventListener(
   "DOMContentLoaded",
-  () => {
-
-    loadClinicData();
+  async () => {
 
     // زر اللغة
     $("#language-btn")
@@ -1253,14 +1620,15 @@ document.addEventListener(
     $("#refresh-btn")
       ?.addEventListener(
         "click",
-        () => {
+        async () => {
+          if (cloudMode) {
+            await loadCloudClinicData(true);
+            return;
+          }
 
           renderPatients();
-
           renderQueue();
-
           updateDashboard();
-
         }
       );
 
@@ -1326,13 +1694,22 @@ document.addEventListener(
     queueDateFilter?.addEventListener("change", renderQueue);
 
 
-    updatePageTitle();
+    document.addEventListener("visibilitychange", () => {
+      if (
+        document.visibilityState === "visible" &&
+        cloudMode &&
+        cloudSessionUser
+      ) {
+        loadCloudClinicData(true);
+      }
+    });
 
-    renderPatients();
-
-    renderQueue();
-
-    updateDashboard();
+    const cloudConfigured = await initializeCloudApp();
+    if (!cloudConfigured) {
+      loadClinicData();
+      updatePageTitle();
+      renderClinicData();
+    }
 
   }
 );
